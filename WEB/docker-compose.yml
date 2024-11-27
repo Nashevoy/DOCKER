@@ -1,0 +1,18 @@
+version: '3.8'
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:80"
+    volumes:
+      - ./src:/var/www/html
+  db:
+    image: mysql:5.7
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword MYSQL_DATABASE=webdb MYSQL_USER=webuser MYSQL_PASSWORD=webpassword
+    volumes:
+      - db_data:/var/lib/mysql
+volumes:
+  db_data:

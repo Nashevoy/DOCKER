@@ -1,0 +1,27 @@
+version: '3.8'
+services:
+  mediawiki:
+    image: mediawiki
+    container_name: mediawiki
+    ports:
+      - "8080:80"
+    volumes:
+      - mediawiki_data:/var/www/html
+    environment:
+      - MEDIAWIKI_SITE_NAME=MyWiki
+      - MEDIAWIKI_SITE_LANG=en
+      - MEDIAWIKI_ADMIN_USER=admin
+      - MEDIAWIKI_ADMIN_PASS=adminpass
+  database:
+    image: mariadb
+    container_name: mediawiki_db
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpass
+      - MYSQL_DATABASE=mediawiki
+      - MYSQL_USER=wikiuser
+      - MYSQL_PASSWORD=wikidbpass
+    volumes:
+      - db_data:/var/lib/mysql
+volumes:
+  mediawiki_data:
+  db_data:
