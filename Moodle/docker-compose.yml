@@ -1,21 +1,123 @@
-version: '3.8'
 services:
-  moodle:
+  # Servicio de postgres:
+  postgres:
+    image: "moodledev/postgres:${POSTGRES_VERSION_TAG}-${PG_LOCALE}"
     build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "8080:80"
+      context: ./postgres
+      args:
+        ARG_POSTGRES_IMAGE_FROM: quay.io/krestomatio/postgres:${POSTGRES_VERSION_TAG}
+        POSTGRES_UID: ${UID:-1000}
+        MY_TZ: ${MY_TZ}
+    expose:
+      - "${PG_PORT}"
+   # Uncomment following lines to expose postgres to host network
+   # ports:
+   #   - "${IP}:${PG_PORT}:5432"
     volumes:
-      - moodle_data:/var/www/html/moodle
-    depends_on:
-      - db
-  db:
-    image: mysql:5.7
+      - postgres_data:/var/lib/postgresql/data
+      - ./db_dumps:/opt/db_dumps:z
     environment:
-      MYSQL_ROOT_PASSWORD: rootpass MYSQL_DATABASE=moodle MYSQL_USER=moodleuser MYSQL_PASSWORD=moodlepass
+      POSTGRES_PORT: "${PG_PORT}"
+      POSTGRESQL_DATABASE: "${POSTGRES_DB}"
+      POSTGRESQL_USER: "${POSTGRES_USER}"
+      POSTGRESQL_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRESQL_ADMIN_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRESQL_LOG_STDERR: true
+
+  # Servicio de PHP-FPM
+  php-fpm:
+    image: "moodledev/php:${PHP_VERSION_TAG}"
+    build:
+      context: ./php-fpm
+      args:
+        ARG_PHP_FPM_IMAGE_FROM: docker.io/php:${PHP_VERSION_TAG}
+        PHP_UID: ${UID:-1000}
+        MY_TZ: ${MY_TZ}
+        DOCUMENT_ROOT: ${DOCUMENT_ROOT}
+    environment:
+      - XDEBUG_CONFIG=idekey=PHPTEST
+      - PHP_IDE_CONFIG=serverName=localhost
+      - PHP_FPM_PORT
+      - DOCUMENT_ROOT
+      - POSTGRES_DB
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
+      - MOODLE_DATA
+      - WWWROOT
+      - WWW_PORT
+      - MOODLE_INSTALL_UNATTENDED
+      - MOODLE_INSTALL_LANG
+      - MOODLE_INSTALL_FULLNAME
+      - MOODLE_INSTALL_SHORTNAME
+      - MOODLE_INSTALL_SUMMARY
+      - MOODLE_INSTALL_USER
+      - MOODLE_INSTALL_PASS
+      - MOODLE_INSTALL_EMAIL
+      # Uncomment following lines and modify variable content for CUSTOM_CA
+      # - |-
+      #   CA_CERT=-----BEGIN CERTIFICATE-----
+      #   REPLACE_CA_CONTENT
+      #   -----END CERTIFICATE-----
     volumes:
-      - db_data:/var/lib/mysql
+      - ./${REPO_FOLDER}:${DOCUMENT_ROOT}:z
+      - ./moodledata:${MOODLE_DATA}:z
+      - ./log:/var/log/shared:z
+    expose:
+      - "${PHP_FPM_PORT}"
+    links:
+      - postgres
+    depends_on:
+      - postgres
+
+  # Servicio de nginx
+  nginx:
+    image: moodledev/nginx:${NGINX_VERSION_TAG}
+    build:
+      context: ./nginx
+      args:
+        ARG_NGINX_IMAGE_FROM: quay.io/krestomatio/nginx:${NGINX_VERSION_TAG}
+        NGINX_UID: ${UID:-1000}
+    volumes:
+      - ./${REPO_FOLDER}:${DOCUMENT_ROOT}:z
+      - ./moodledata:${MOODLE_DATA}:z
+    ports:
+      - "${IP}:${WWW_PORT}:8080"
+    environment:
+      NGINX_DOCUMENTROOT: ${DOCUMENT_ROOT}
+      NGINX_FASTCGI_PASS: php-fpm:${PHP_FPM_PORT}
+      NGINX_PORT: ${WWW_PORT}
+    links:
+      - php-fpm
+      - postgres
+    depends_on:
+      - php-fpm
+
+  # Cron para moodle
+  cron:
+    image: moodledev/php:${PHP_VERSION_TAG}-cron
+    build:
+      context: ./cron
+      args:
+        ARG_CRON_IMAGE_FROM: "moodledev/php:${PHP_VERSION_TAG}"
+        DOCUMENT_ROOT: ${DOCUMENT_ROOT}
+    volumes:
+      - ./${REPO_FOLDER}:${DOCUMENT_ROOT}:z
+      - ./moodledata:${MOODLE_DATA}:z
+    depends_on:
+      - nginx
+
+ # Gestor de base de datos
+  pgadmin:
+    image: "docker.io/foxylion/pgadmin4"
+    ports:
+      - "${IP}:5050:80"
+    links:
+      - postgres
+    volumes:
+      - ./db_dumps:/root:z
+    depends_on:
+      - postgres
+
 volumes:
-  moodle_data:
-  db_data:
+  postgres_data:
+    driver: "local"
